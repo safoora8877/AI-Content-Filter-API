@@ -84,42 +84,60 @@ async def filter_content(request: FilterRequest):
         reason = result.get("reason", "Content analyzed")
         category = result.get("category", "other")
 
-        # Extra safety fallback
-        query_lower = request.query.lower()
-        harmful = ["porn", "sex", "xxx", "nude", "adult", "kill", "bomb", "drug", "fuck", "shit"]
-        if any(word in query_lower for word in harmful) and decision != "block":
-            decision = "block"
-            confidence = 95
-            reason = "Harmful keyword detected"
-            category = "adult" if any(w in query_lower for w in ["porn","sex","xxx","nude","adult"]) else "violence"
 
+        query_lower = request.query.lower()
+    
+    # Start with your backend decision (from API or other logic)
+    # Assume `decision`, `confidence`, `reason`, `category` are already set
+
+    # ⭐ Extra safety fallback: harmful keywords
+    harmful_keywords = ["porn", "sex", "xxx", "nude", "fuck", "murder", "assault",
+    "abuse", "rape", "gun", "weapon", "stab", "cocaine", "heroin", "meth", "lsd", "weed"]
+    adult_keywords = ["porn", "sex", "xxx", "nude", "erotic", "fetish", "boobs", "cock", "dick", "pussy", "fuck", "cum"]
+    violence_keywords = ["murder"]
+
+    if any(word in query_lower for word in harmful_keywords) and decision != "block":
+        decision = "block"
+        confidence = 95
+        reason = "Harmful or dangerous keyword detected"
+        if any(word in query_lower for word in adult_keywords):
+            category = "adult"
+        elif any(word in query_lower for word in violence_keywords):
+            category = "violence"
+        else:
+            category = "unknown"
+
+    return FilterResponse(
+        decision=decision,
+        confidence=confidence,
+        reason=reason,
+        category=category,
+        alert_message="This content is not suitable for children." if decision == "block" else ""
+    )
+
+except Exception as e:
+    print("Error:", str(e))
+    # Strong fallback: block if any dangerous keywords are present
+    query_lower = request.query.lower()
+    if any(word in query_lower for word in harmful_keywords):
+        category = "adult" if any(word in query_lower for word in adult_keywords) else "violence"
         return FilterResponse(
-            decision=decision,
-            confidence=confidence,
-            reason=reason,
+            decision="block",
+            confidence=90,
+            reason="Dangerous or inappropriate content detected",
             category=category,
-            alert_message="This content is not suitable for children." if decision == "block" else ""
+            alert_message="This content is not suitable for children."
         )
+    # If all else fails
+    return FilterResponse(
+        decision="allow",
+        confidence=50,
+        reason="Processing error - treated as safe",
+        category="safe",
+        alert_message=""
+    )
 
-    except Exception as e:
-        print("Error:", str(e))
-        # Strong fallback
-        query_lower = request.query.lower()
-        if any(word in query_lower for word in ["kill", "bomb", "porn", "sex", "drug"]):
-            return FilterResponse(
-                decision="block",
-                confidence=90,
-                reason="Dangerous or inappropriate content detected",
-                category="violence" if "kill" in query_lower or "bomb" in query_lower else "adult",
-                alert_message="This content is not suitable for children."
-            )
-        return FilterResponse(
-            decision="allow",
-            confidence=50,
-            reason="Processing error - treated as safe",
-            category="safe",
-            alert_message=""
-        )
-
+       
+    
 if __name__ == "__main__":
     import uvicorn
